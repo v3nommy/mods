@@ -1,14 +1,62 @@
 # Control Room v2: Panel Cockpit + Trust Guard
 
-Control Room is a Letta Code mod that keeps long-running agent work honest by separating **human intent**, **agent progress claims**, and **harness-observed reality** in one small cockpit.
-
-It is not a project manager. It is a trust surface for agentic work.
+Control Room is a Letta Code mod that gives long-running agent work a small, visible cockpit.
 
 ```text
-CR [goal] Build demo | [mode] edit | [next] Verify cockpit | [approval] ask | [verified] stale | [risk] medium | workspace
+CR [goal] Ship demo | [mode] edit | [next] Run smoke checks | [approval] ask | [verified] claimed | [risk] low | workspace
 ```
 
-## Why this matters
+It keeps the session anchored around three things that otherwise blur together in chat:
+
+- **Human intent**: what the user actually asked for and accepted.
+- **Agent progress**: what the agent says it is doing next.
+- **Harness reality**: what the runtime observed through tools, file changes, tests, and events.
+
+The result is a lightweight trust surface: the user can glance at the cockpit and see the goal, mode, next step, approval posture, verification state, drift risk, and workspace.
+
+## The tiny golden path
+
+If you only remember four commands, use these:
+
+```text
+/cr goal Ship the demo
+/cr next Run the smoke checks
+/cr safe
+/cr
+```
+
+That gives you:
+
+1. a human-owned goal,
+2. a visible next step,
+3. approval required before the agent mutates Control Room progress state,
+4. a compact cockpit view.
+
+Then let the agent update its operational state with `control_room_update` as work progresses.
+
+A minimal demo:
+
+```text
+/cr goal Polish Control Room for submission
+/cr next Verify the cockpit and trust guard
+/cr safe
+/cr
+```
+
+Agent call:
+
+```json
+{
+  "mode": "verify",
+  "next": "Run live smoke checks",
+  "verificationState": "claimed",
+  "checkpoint": "Ready to test runtime behavior"
+}
+```
+
+The important part: the agent can claim verification, but it cannot turn that claim into human acceptance.
+
+## Why agents need a cockpit
 
 Long-running coding sessions drift. The user sets a goal, the agent explores, tools run, files change, tests pass or fail, context compacts, and eventually nobody has a crisp answer to:
 
@@ -17,31 +65,111 @@ Long-running coding sessions drift. The user sets a goal, the agent explores, to
 - What is the next step?
 - Has the result been verified, claimed, or merely hoped for?
 - Did something change after verification?
-- Can the agent silently mutate its own progress state?
+- Can the agent silently rewrite its own progress state?
 
-Control Room makes those questions visible.
+Control Room makes those answers explicit.
 
-## Core idea
+It is not a project manager. It is a trust layer for agentic work.
 
-Control Room tracks three kinds of truth separately:
+## The three layers of Control Room
 
-| Source | Meaning | Example |
-| --- | --- | --- |
-| Human | Intent and acceptance | `/cr goal Ship the contest demo` |
-| Agent | Progress narration and claims | `control_room_update(mode=edit, next=Run smoke test)` |
-| Harness | Observed runtime facts | tool calls, file changes, verification commands, compaction, LLM events |
+Control Room works because it does not treat every piece of state as equally trustworthy. It keeps three layers separate.
 
-The important rule: **agent claims are not human verification**.
+### 1. Human layer: intent and acceptance
 
-An agent can claim verification, but Control Room records it as `claimed`. A human `/cr verified` is the stronger signal. If a tool later changes state, Control Room marks verification `stale`.
+The human layer records things only the user should own:
 
-## User-facing cockpit
+- the real goal
+- explicit acceptance
+- human verification
+- approval mode
 
-The panel line is designed for the Letta Code terminal UI:
+Commands that write human-owned state:
+
+```text
+/cr goal <text>
+/cr verified [note]
+/cr safe
+/cr lock
+/cr unlock
+```
+
+Example:
+
+```text
+/cr goal Ship the contest demo
+/cr verified Smoke test passed and UI looks right
+```
+
+This layer matters because the user should not need to wonder whether the agent quietly changed the target or marked its own work accepted.
+
+### 2. Agent layer: progress and claims
+
+The agent layer records what the agent believes is happening now:
+
+- current working mode
+- next step
+- checkpoint notes
+- evidence strings
+- verification claims
+
+Agent-facing tools:
+
+```text
+control_room_status
+control_room_update
+control_room_propose_goal
+```
+
+The key invariant:
+
+```text
+agent says verified -> Control Room records claimed
+human says verified -> Control Room records verified
+```
+
+Agents can keep the cockpit current, but they cannot promote their own claim into human acceptance.
+
+### 3. Harness layer: observed runtime facts
+
+The harness layer records what Letta Code observed:
+
+- tool starts and ends
+- file-changing or shell-like activity
+- verification-looking commands
+- turn boundaries
+- compaction and LLM events when supported
+- recent tool signals
+
+This layer is not semantic proof. It is evidence that something happened.
+
+For example:
+
+- if a test command is observed, Control Room can mark verification as `checking`;
+- if file-changing activity happens after a claim, Control Room can mark verification as `stale`;
+- if state may need attention at turn end, Control Room can remind the agent to update or continue normally.
+
+Together, the three layers make the cockpit honest: human intent, agent narration, and runtime evidence stay visible and separate.
+
+## The cockpit line
+
+Control Room renders a compact panel line:
 
 ```text
 CR [goal] <human goal> | [mode] <mode> | [next] <next step> | [approval] <auto|ask|locked> | [verified] <state> | [risk] <level> | <workspace>
 ```
+
+Field meanings:
+
+| Field | Meaning |
+| --- | --- |
+| `goal` | Human-owned goal for this workspace |
+| `mode` | Current agent working mode: explore, plan, edit, verify, stuck, handoff |
+| `next` | The next concrete step |
+| `approval` | Whether agent progress updates are auto, ask, or locked |
+| `verified` | Verification state: unknown, checking, claimed, verified, stale |
+| `risk` | Lightweight drift heuristic |
+| `workspace` | Current workspace key |
 
 Color is used when supported:
 
@@ -54,9 +182,36 @@ static labels use distinct soft/pastel ANSI colors
 workspace is dim
 ```
 
-The mod intentionally avoids fragile glyphs after testing showed some symbols render as tofu boxes in Desktop terminal fonts.
+The mod intentionally avoids fragile glyph-heavy UI after testing showed some symbols render as tofu boxes in Desktop terminal fonts.
+
+## Verification words, painfully clarified
+
+These commands sound similar, but they mean different things.
+
+| Command/state | Who owns it? | Meaning |
+| --- | --- | --- |
+| `/cr verified [note]` | Human | The user confirms the current state is verified. This is the strongest signal. |
+| `/cr verify <what>` | Human | This still needs checking. Sets mode toward verification work. |
+| `/cr needs <what>` | Human | Alias for `/cr verify <what>`. Use it when something needs verification. |
+| `/cr claim [note]` | Agent-grade/provisional | A claim that verification happened, but not human acceptance. |
+| `/cr checkpoint [note]` | Human or workflow note | Records where the session is, without claiming verification. |
+| `claimed` | Agent state | The agent says it checked something. Useful, but not final. |
+| `verified` | Human state | The user confirmed it. |
+| `stale` | Harness-derived state | Something changed after checking/claimed/verified. Re-check before trusting. |
+
+A useful mental model:
+
+```text
+verify / needs  = please check this
+claim           = agent says it checked this
+verified        = human accepts this as checked
+checkpoint      = breadcrumb, not proof
+stale           = proof got old after a change
+```
 
 ## Commands
+
+Most users can start with the golden path above. The full command surface is here for power users.
 
 ```text
 /cr                         show compact status
@@ -76,32 +231,8 @@ The mod intentionally avoids fragile glyphs after testing showed some symbols re
 /cr safe                    require approval for agent progress updates
 /cr unlock                  allow agent progress updates
 /cr expand|collapse         toggle expanded panel
-/cr glyphs                  terminal glyph/color compatibility test
 /cr reset                   reset this workspace state
 ```
-
-## Reminder loop
-
-When Control Room is on, the mod can use the `turn_end` event as a lightweight self-check loop. It injects a continuation only when state may need attention:
-
-- goal or next step is missing
-- mode is `stuck` or `handoff`
-- verification is `unknown`, `checking`, or `stale`
-- a meaningful change or verification signal happened after the last reminder
-
-Reminder text:
-
-```text
-Control Room checkpoint: state may need an update. If needed, call `control_room_update` or `control_room_propose_goal`; otherwise continue normally.
-```
-
-`/cr off` pauses that reminder loop and renders the cockpit as paused:
-
-```text
-CR [off] paused | /cr on to resume | workspace
-```
-
-The reminder stores a pending flag so its own follow-up turn does not recursively remind forever.
 
 ## Agent tools
 
@@ -159,25 +290,39 @@ This keeps the user in the loop without causing an approved tool call to be bloc
 
 `control_room_status` stays read-only. `control_room_propose_goal` always asks through the native approval path.
 
-## Verification semantics
+## Reminder loop
 
-Verification states:
+When Control Room is on, the mod can use the `turn_end` event as a lightweight self-check loop. It injects a continuation only when state may need attention:
+
+- goal or next step is missing
+- mode is `stuck` or `handoff`
+- verification is `unknown`, `checking`, or `stale`
+- a meaningful change or verification signal happened after the last reminder
+
+Reminder text:
 
 ```text
-unknown   no useful verification signal yet
-checking  a verification command/test was observed
-claimed   agent says it verified something
-verified  human marked the state verified
-stale     something changed after checking/claimed/verified
+Control Room checkpoint: state may need an update. If needed, call `control_room_update` or `control_room_propose_goal`; otherwise continue normally.
 ```
 
-Rules:
+Important: the reminder uses a pending flag so it does **not** recursively trigger itself.
 
-- `/cr verified` records human verification.
-- `/cr verify <what>` and `/cr needs <what>` record what still needs checking.
-- agent `control_room_update(... verificationState=verified ...)` is downgraded to `claimed`.
-- edit/write/shell-like tool activity after verification marks verification `stale`.
-- test/check/lint-like commands mark verification `checking` until the result is interpreted.
+The loop is:
+
+```text
+assistant turn finishes
+-> Control Room may inject one checkpoint reminder
+-> agent either updates Control Room or continues normally
+-> the reminder follow-up does not cause another reminder
+```
+
+`/cr off` pauses that reminder loop and renders the cockpit as paused:
+
+```text
+CR [off] paused | /cr on to resume | workspace
+```
+
+`/cr on` resumes it.
 
 ## Harness signals
 
@@ -226,9 +371,9 @@ Then reload mods in Letta Code:
 
 For local development, copy or symlink `mods/index.ts` into `~/.letta/mods/control-room.ts`, then run `/reload`.
 
-## Demo script
+## Longer demo script
 
-A good demo should show the trust mechanism, not just the pretty line.
+Use this when you want to show the trust mechanism, not just the pretty line.
 
 ### 1. Set the human goal
 
