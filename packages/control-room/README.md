@@ -1,4 +1,4 @@
-# Control Room v2: Panel Cockpit + Trust Guard
+# Control Room: Goal, Progress, and Trust at a Glance
 
 Control Room is a Letta Code mod that keeps long-running agent work honest by separating **human intent**, **agent progress claims**, and **harness-observed reality** in one small cockpit.
 
@@ -8,7 +8,7 @@ It is not a project manager. It is a trust surface for agentic work.
 CR [goal] Build demo | [mode] edit | [next] Verify cockpit | [approval] ask | [verified] stale | [risk] medium | workspace
 ```
 
-## Why this matters
+## Why we made Control Room
 
 Long-running coding sessions drift. The user sets a goal, the agent explores, tools run, files change, tests pass or fail, context compacts, and eventually nobody has a crisp answer to:
 
@@ -44,8 +44,8 @@ There are a lot of commands because Control Room is meant to be useful for power
 Start here:
 
 ```text
-/cr goal Build Control Room v2 contest demo
-/cr next Verify the cockpit and trust guard
+/cr goal Add export support to the app
+/cr next Run the export flow and verify the saved file
 /cr safe
 /cr
 ```
@@ -76,21 +76,9 @@ Field meanings:
 | `next` | The next concrete step |
 | `approval` | Whether agent progress updates are auto, ask, or locked |
 | `verified` | Whether work is unknown, checking, claimed, verified, or stale |
-| `risk` | A lightweight drift heuristic |
+| `risk` | A lightweight drift heuristic based on cockpit completeness and recent signals: missing goal/next, stale or unknown verification, stuck/handoff mode, and meaningful changes after verification raise risk. |
 | `workspace` | The current workspace key |
 
-Color is used when supported:
-
-```text
-static labels use distinct soft/pastel ANSI colors
-[verified] label uses pastel coral
-[verified] value uses semantic colors: green verified, sunshine yellow checking/claimed/unknown, red stale
-[approval] value stays plain/default text: auto, ask, or locked
-[risk] value uses semantic colors: green low, sunshine yellow medium, red high
-workspace is dim
-```
-
-The mod avoids fragile glyphs after testing showed some symbols render as tofu boxes in the Desktop terminal font.
 
 ## Commands
 
@@ -303,16 +291,16 @@ Then reload mods in Letta Code:
 
 For local development, copy or symlink `mods/index.ts` into `~/.letta/mods/control-room.ts`, then run `/reload`.
 
-## Demo script
+## Example Demo
 
-A good demo should show the trust mechanism, not just the pretty line.
+A good demo should show the trust mechanism, not just the pretty line. This example uses a generic app feature so the flow is easy to map onto real work.
 
 ### 1. Set the human goal
 
 ```text
-/cr goal Build Control Room v2 contest demo
+/cr goal Add CSV export to the reports page
 /cr mode edit
-/cr next Verify the cockpit, tools, lock, and approval flow
+/cr next Implement the export button and verify the downloaded file
 ```
 
 ### 2. Show the cockpit and provenance
@@ -329,8 +317,8 @@ Agent calls:
 ```text
 control_room_update({
   "mode": "verify",
-  "next": "Run live smoke checks",
-  "checkpoint": "Ready to test runtime behavior"
+  "next": "Run the export flow and inspect the downloaded CSV",
+  "checkpoint": "Export implementation is ready for verification"
 })
 ```
 
@@ -376,3 +364,6 @@ The reminder loop pauses.
 - It does not import Letta Code internals.
 - Its permission overlay applies to its own agent update tool, not arbitrary project tools.
 - Human-owned goal and human verification remain separate from agent claims.
+
+Made with care, thoughtful collaboration ... and coffee.
+- Memo and Anna <3
